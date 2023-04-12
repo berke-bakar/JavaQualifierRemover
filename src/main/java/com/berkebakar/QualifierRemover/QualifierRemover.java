@@ -1,20 +1,16 @@
 package com.berkebakar.QualifierRemover;
 
-import guru.nidi.graphviz.engine.Format;
-import guru.nidi.graphviz.engine.Graphviz;
-import guru.nidi.graphviz.model.MutableGraph;
 import org.eclipse.jdt.core.JavaCore;
-import org.eclipse.jdt.core.ToolFactory;
 import org.eclipse.jdt.core.dom.AST;
+import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.TypeDeclaration;
-import org.eclipse.jdt.core.formatter.CodeFormatter;
-import org.eclipse.jdt.core.formatter.DefaultCodeFormatterConstants;
 import org.eclipse.jface.text.BadLocationException;
 import org.eclipse.jface.text.Document;
+import org.eclipse.jface.text.IDocument;
+import org.eclipse.text.edits.MultiTextEdit;
 import org.eclipse.text.edits.TextEdit;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,61 +34,29 @@ public class QualifierRemover {
             parser.setKind(ASTParser.K_CLASS_BODY_DECLARATIONS);
 
             TypeDeclaration typeDeclaration = (TypeDeclaration) parser.createAST(null);
+
+            IDocument document = new Document(sourceCode);
             QualifierRemoverVisitor visitor = new QualifierRemoverVisitor();
             typeDeclaration.accept(visitor);
 
 
+            TextEdit rootEdit = new MultiTextEdit();
 
-//            String modifiedMethodCode = typeDeclaration.getMethods()[0].toString();
-//
-//            Map<String, String> formatterOptions = DefaultCodeFormatterConstants.getJavaConventionsSettings();
-//            formatterOptions.put(DefaultCodeFormatterConstants.FORMATTER_TAB_CHAR, JavaCore.SPACE);
-//            formatterOptions.put(DefaultCodeFormatterConstants.FORMATTER_TAB_SIZE, "4");
-//            CodeFormatter codeFormatter = ToolFactory.createCodeFormatter(options);
-//            TextEdit textEdit = codeFormatter.format(
-//                    CodeFormatter.K_CLASS_BODY_DECLARATIONS, // format a compilation unit
-//                    modifiedMethodCode, // source to format
-//                    0, // starting position
-//                    modifiedMethodCode.length(), // length
-//                    0, // initial indentation
-//                    System.getProperty("line.separator") // line separator
-//            );
-//
-//            // Get the formatted code from the TextEdit object
-//            Document document = new Document(modifiedMethodCode);
-//            textEdit.apply(document);
-//            String formattedCode = document.get();
-
-            // Write to file the formatted code
-//            Path outputFilePath = outputPath.resolve(inputPath.getFileName().toString());
-//            File outputFile;
-//            if (Files.notExists(outputFilePath)) {
-//                outputFile = Files.createFile(outputFilePath).toFile();
-//            } else {
-//                outputFile = outputFilePath.toFile();
-//            }
-            Path outputFilePath = outputPath.resolve(inputPath.getFileName().toString().replace(".java", ".png"));
-            File outputFile;
-            if (Files.notExists(outputFilePath)) {
-                outputFile = Files.createFile(outputFilePath).toFile();
-            } else {
-                outputFile = outputFilePath.toFile();
+            for (Map.Entry<ASTNode, TextEdit> entry : visitor.getTextEdits().entrySet()) {
+                rootEdit.addChild(entry.getValue());
             }
+            rootEdit.apply(document);
 
-            MutableGraph astGraph = visitor.getGraph();
-            Graphviz.fromGraph(astGraph)
-                    .width(3840)
-                    .height(2160)
-                    .render(Format.PNG).toFile(outputFile);
+            String modifiedSource = document.get();
 
-//            Files.write(outputFilePath, formattedCode.getBytes());
-
+            //Write the modified version to file
+            Path outputFilePath = outputPath.resolve(inputPath.getFileName().toString());
+            Files.write(outputFilePath, modifiedSource.getBytes());
 
         } catch (IOException e) {
             System.err.println("An error occurred while writing to file: " + e.getMessage());
+        } catch (BadLocationException e){
+            System.err.println("An error occurred while modifying source code: " + e.getMessage());
         }
-//        catch (BadLocationException e) {
-//            throw new RuntimeException(e);
-//        }
     }
 }

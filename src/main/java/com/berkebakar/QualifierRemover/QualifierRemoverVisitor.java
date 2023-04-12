@@ -1,72 +1,50 @@
 package com.berkebakar.QualifierRemover;
 
-import guru.nidi.graphviz.attribute.*;
-import guru.nidi.graphviz.model.MutableGraph;
-import guru.nidi.graphviz.model.MutableNode;
 import org.eclipse.jdt.core.dom.*;
+import org.eclipse.text.edits.ReplaceEdit;
+import org.eclipse.text.edits.TextEdit;
 
-import static guru.nidi.graphviz.model.Factory.mutGraph;
-import static guru.nidi.graphviz.model.Factory.mutNode;
+import java.util.HashMap;
+import java.util.Map;
 
 public class QualifierRemoverVisitor extends ASTVisitor {
-
-    private final MutableGraph graph;
+    private final Map<ASTNode, TextEdit> textEdits;
     public QualifierRemoverVisitor() {
         super(false);
-        this.graph = mutGraph("AST").setDirected(true);
+        this.textEdits = new HashMap<>();
     }
 
-    public MutableGraph getGraph() {
-        return graph;
-    }
-
-    private void addNode(ASTNode node) {
-        graph.add(mutNode(Integer.toString(node.hashCode()))
-                .add(Label.of(node.getClass().getSimpleName() + "\n" + node.toString()))
-        );
+    public Map<ASTNode, TextEdit> getTextEdits(){
+        return textEdits;
     }
 
     @Override
     public boolean visit(QualifiedName node) {
-        addNode(node);
-        addEdge(getParentInGraph(node), node);
-//
-        return true;
-    }
-    @Override
-    public boolean visit(SimpleName node){
-        addNode(node);
-        addEdge(getParentInGraph(node), node);
-        return true;
-    }
+        // Check if the parent of this node is not a QualifiedName, and left child is not a SimpleName
+        if (!(node.getParent() instanceof QualifiedName) && !(node.getQualifier() instanceof SimpleName)) {
+            // Get the simple name part of the qualified name
+            SimpleName simpleName = node.getName();
 
-    private ASTNode getParentInGraph(ASTNode node) {
-        ASTNode currentParentNode = node.getParent();
+            // Create a new node that only contains the simple name
+            SimpleName newSimpleName = node.getAST().newSimpleName(simpleName.getIdentifier());
 
-        while (currentParentNode != null) {
-
-            for (MutableNode currentNode : graph.nodes()) {
-                if (currentNode.name().equals(Label.of(Integer.toString(currentParentNode.hashCode())))) {
-                    return currentParentNode;
-                }
+            // Replace the qualified name with the simple name based on parent's type (this way it is more accurate)
+            ASTNode parent = node.getParent();
+            if (parent instanceof MethodInvocation methodInvocation) {
+                textEdits.put(node, new ReplaceEdit(methodInvocation.getStartPosition() + node.getStartPosition() - parent.getStartPosition(), node.getLength(), newSimpleName.getIdentifier()));
+            } else if (parent instanceof FieldAccess fieldAccess) {
+                textEdits.put(node, new ReplaceEdit(fieldAccess.getStartPosition() + node.getStartPosition() - parent.getStartPosition(), node.getLength(), newSimpleName.getIdentifier()));
+            } else if (parent instanceof MarkerAnnotation markerAnnotation) {
+                textEdits.put(node, new ReplaceEdit(markerAnnotation.getStartPosition() + node.getStartPosition() - parent.getStartPosition(), node.getLength(), newSimpleName.getIdentifier()));
+            } else if (parent instanceof SimpleType simpleType) {
+                textEdits.put(node, new ReplaceEdit(simpleType.getStartPosition() + node.getStartPosition() - parent.getStartPosition(), node.getLength(), newSimpleName.getIdentifier()));
+            } else if (parent instanceof ReturnStatement returnStatement){
+                textEdits.put(node, new ReplaceEdit(returnStatement.getStartPosition() + node.getStartPosition() - parent.getStartPosition(), node.getLength(), newSimpleName.getIdentifier()));
+            } else if (parent instanceof NormalAnnotation normalAnnotation){
+                textEdits.put(node, new ReplaceEdit(normalAnnotation.getStartPosition() + node.getStartPosition() - parent.getStartPosition(), node.getLength(), newSimpleName.getIdentifier()));
             }
-            currentParentNode = currentParentNode.getParent();
         }
 
-        return null;
-    }
-
-    @Override
-    public boolean visit(TypeDeclaration node) {
-        if (node.getParent() != node.getRoot()) { // Do not add the root type declaration
-            addNode(node);
-            addEdge(getParentInGraph(node), node);
-        }
         return true;
-    }
-
-    private void addEdge(ASTNode source, ASTNode target) {
-        if (source != null) // no need to add edge if there is no parent
-            graph.add(mutNode(Integer.toString(source.hashCode())).addLink(mutNode(Integer.toString(target.hashCode()))));
     }
 }
